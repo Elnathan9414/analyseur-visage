@@ -12,7 +12,7 @@ export default function HomeScreen() {
   const [cameraVisible, setCameraVisible] = useState(false);
   const [cameraFacing, setCameraFacing] = useState<'back' | 'front'>('back'); // Nouvel état pour le type de caméra
   const [permission, requestPermission] = useCameraPermissions();
-
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
   const cameraRef = useRef<CameraView>(null);
 
   // 📸 permission + open caméra (choix du type)
@@ -77,7 +77,7 @@ export default function HomeScreen() {
       const base64Data = manipResult.base64;
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyCVSZ4NwVGSEFGHzqQMZS9CXypHQq0a0ok`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
         {
           method: "POST",
           headers: {

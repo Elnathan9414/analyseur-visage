@@ -5,6 +5,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Location from 'expo-location';
 import { useNavigation } from '@react-navigation/native';
+import MapView, { Marker } from 'react-native-maps';
 
 type Metadata = {
   location?: string;        // format "lat, lon"
@@ -26,6 +27,8 @@ export default function MetadataScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string>();
   const navigation = useNavigation();
+const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+
 
   // --- Extraction des métadonnées EXIF ---
   const extractLocationFromExif = (exif: any): string | undefined => {
@@ -36,8 +39,8 @@ export default function MetadataScreen() {
       let lonRef = exif.GPSLongitudeRef || 'E';
 
       if (Array.isArray(lat) && Array.isArray(lon)) {
-        const latDeg = lat[0] + lat[1]/60 + lat[2]/3600;
-        const lonDeg = lon[0] + lon[1]/60 + lon[2]/3600;
+        const latDeg = lat[0] + lat[1] / 60 + lat[2] / 3600;
+        const lonDeg = lon[0] + lon[1] / 60 + lon[2] / 3600;
         const latValue = latRef === 'S' ? -latDeg : latDeg;
         const lonValue = lonRef === 'W' ? -lonDeg : lonDeg;
         return `${latValue.toFixed(6)}, ${lonValue.toFixed(6)}`;
@@ -141,7 +144,7 @@ export default function MetadataScreen() {
       }
 
       const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyCVSZ4NwVGSEFGHzqQMZS9CXypHQq0a0ok`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -169,23 +172,23 @@ export default function MetadataScreen() {
   };
 
   // --- Ouvrir la carte avec les coordonnées GPS ---
-  
+
   const openMap = async () => {
-  if (!metadata?.location) return;
-  const [lat, lon] = metadata.location.split(',').map(coord => coord.trim());
-  if (!lat || !lon) return;
-  const url = `https://maps.google.com/?q=${lat},${lon}`;
-  try {
-    const canOpen = await Linking.canOpenURL(url);
-    if (canOpen) {
-      await Linking.openURL(url);
-    } else {
-      Alert.alert("Erreur", "Impossible d'ouvrir l'application de cartes.");
+    if (!metadata?.location) return;
+    const [lat, lon] = metadata.location.split(',').map(coord => coord.trim());
+    if (!lat || !lon) return;
+    const url = `https://maps.google.com/?q=${lat},${lon}`;
+    try {
+      const canOpen = await Linking.canOpenURL(url);
+      if (canOpen) {
+        await Linking.openURL(url);
+      } else {
+        Alert.alert("Erreur", "Impossible d'ouvrir l'application de cartes.");
+      }
+    } catch (error) {
+      Alert.alert("Erreur", "Une erreur est survenue.");
     }
-  } catch (error) {
-    Alert.alert("Erreur", "Une erreur est survenue.");
-  }
-};
+  };
 
   const resetSelection = () => {
     setSelectedImage(undefined);
@@ -267,6 +270,17 @@ export default function MetadataScreen() {
               <Text style={styles.noData}>Aucune métadonnée trouvée pour cette image.</Text>
             )}
           </View>
+          <MapView
+            style={{ width: '100%', height: 200 }}
+            initialRegion={{
+              latitude: 45.4215,
+              longitude: -75.6972,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            }}
+          >
+            <Marker coordinate={{ latitude: 45.4215, longitude: -75.6972 }} />
+          </MapView>
 
           {/* Bouton d'analyse Gemini */}
           <TouchableOpacity
