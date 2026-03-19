@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "ai-vision",
-    "slug": "ai-vision ",
+    "slug": "analyseur-visage",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

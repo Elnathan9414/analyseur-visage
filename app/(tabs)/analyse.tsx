@@ -27,7 +27,8 @@ export default function MetadataScreen() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<string>();
   const navigation = useNavigation();
-const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+  const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
+  const [predictionMode, setPredictionMode] = useState(false);
 
 
   // --- Extraction des métadonnées EXIF ---
@@ -138,7 +139,28 @@ const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
       const base64Data = manipResult.base64;
       if (!base64Data) throw new Error("Impossible de convertir l'image en base64");
 
-      let promptText = "Décris précisément cette image (apparence, expression, vêtements, environnement).";
+      let promptText = "";
+      if (predictionMode) {
+        promptText = `
+Analyse cette image en profondeur.
+
+1. Décris précisément ce que tu observes (faits visibles uniquement).
+2. Propose des interprétations plausibles (contexte, situation).
+3. Fais des hypothèses sur ce qui pourrait se passer ensuite.
+
+Sépare clairement :
+- Observations
+- Interprétations
+- Prédictions
+
+Reste prudent et évite les affirmations incertaines.
+fais la mise en forme et evite de mettre des * ou #
+`;
+      } else {
+        promptText = `
+Décris précisément cette image (apparence, expression, vêtements, environnement).fais la mise en forme et evite de mettre des * ou #
+`;
+      };
       if (metadata?.location) {
         promptText = `Cette photo a été prise aux coordonnées GPS suivantes : ${metadata.location}. ` + promptText;
       }
@@ -291,8 +313,16 @@ const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
             {analyzing ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.analyzeButtonText}>🤖 Analyser avec Gemini</Text>
+              <Text style={styles.analyzeButtonText}>🤖 Analyser</Text>
             )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeBtn, predictionMode && styles.modeActive]}
+            onPress={() => setPredictionMode(!predictionMode)}
+          >
+            <Text style={styles.modeText}>
+              {predictionMode ? "🔮 Mode prédiction activé" : "🧠 Mode normal"}
+            </Text>
           </TouchableOpacity>
 
           {/* Résultat de l'analyse */}
@@ -463,5 +493,24 @@ const styles = StyleSheet.create({
   resetButtonText: {
     color: '#334155',
     fontSize: 16,
+  },
+  modeBtn: {
+    backgroundColor: '#e0e7ff',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#c7d2fe',
+    width: '100%',
+    alignItems: 'center',
+  },
+  modeActive: {
+    backgroundColor: '#c7d2fe',
+    borderColor: '#a5b4fc',
+  },
+  modeText: {
+    color: '#3730a3',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

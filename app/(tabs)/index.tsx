@@ -15,6 +15,7 @@ export default function HomeScreen() {
 const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
   const cameraRef = useRef<CameraView>(null);
 
+
   // 📸 permission + open caméra (choix du type)
   const openCamera = async (facing: 'back' | 'front' = 'back') => {
     if (permission?.granted) {
@@ -88,7 +89,7 @@ const API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY;
               {
                 parts: [
                   {
-                    text: "Décris précisément cette image (apparence, expression, vêtements, environnement)."
+                    text: "Analyse cette image de manière détaillée. Décris les éléments visibles (apparence, posture, vêtements, environnement). Ensuite, propose des interprétations plausibles sur le contexte et la situation. Sépare clairement ce qui est observable de ce qui est hypothétique.fais la mise en forme et evite de mettre des * ou #"
                   },
                   {
                     inline_data: {
