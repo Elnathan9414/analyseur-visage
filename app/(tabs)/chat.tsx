@@ -12,6 +12,8 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import Header from '@/components/Header';
+import { ThemedView } from '@/components/themed-view';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -93,6 +95,9 @@ export default function creation() {
   };
 
   return (
+    <>
+    <ThemedView style={{ flex: 1 }}>
+    <Header title="Chat" />
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -146,6 +151,9 @@ export default function creation() {
         </View>
       </View>
     </KeyboardAvoidingView>
+    </ThemedView>
+   
+    </>
   );
 }
 

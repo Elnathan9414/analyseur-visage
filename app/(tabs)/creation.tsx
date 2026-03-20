@@ -1,4 +1,3 @@
-// screens/PromptScreen.tsx
 import { useState, useRef } from 'react';
 import {
   View,
@@ -11,137 +10,251 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import * as MediaLibrary from 'expo-media-library';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import { fal } from "@fal-ai/client";
+import Header from '@/components/Header';
 
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
+type GeneratedImage = {
+  prompt: string;
+  imageUrl: string;
+  timestamp: number;
 };
 
-export default function creation() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
+const STYLES = [
+  { label: "🎨 Normal", value: "" },
+  { label: "🎌 Anime", value: "anime style, vibrant colors, detailed" },
+  { label: "📸 Realistic", value: "photorealistic, ultra detailed, 4k" },
+  { label: "🌃 Cyberpunk", value: "cyberpunk, neon lights, futuristic" },
+  { label: "🖌️ Painting", value: "oil painting, artistic" },
+  { label: "🧊 3D", value: "3D render, cinematic lighting" },
+];
+
+const MODELS = [
+  { label: "⚡ Schnell", value: "fal-ai/flux/schnell" },
+  { label: "🎨 Dev", value: "fal-ai/flux/dev" },
+  { label: "🌈 Kolors", value: "fal-ai/kolors" },
+  { label: "🎬 Aura", value: "fal-ai/aura-flow" },
+];
+
+const FAL_KEY = process.env.EXPO_PUBLIC_FAL_KEY;
+
+if (FAL_KEY) {
+  fal.config({ credentials: FAL_KEY });
+}
+
+export default function FalImageGenerationScreen() {
+  const [prompt, setPrompt] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState(STYLES[0]);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [currentImage, setCurrentImage] = useState<string | null>(null);
+  const [generatedImages, setGeneratedImages] = useState<GeneratedImage[]>([]);
   const [loading, setLoading] = useState(false);
+const [selectedModel, setSelectedModel] = useState(MODELS[0]);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  const sendPrompt = async () => {
-    if (!inputText.trim()) {
-      Alert.alert('Erreur', 'Veuillez entrer un message.');
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission refusée');
       return;
     }
 
-    const userMessage: Message = { role: 'user', content: inputText };
-    setMessages((prev) => [...prev, userMessage]);
-    setInputText('');
-    setLoading(true);
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
 
-    setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
-
-    try {
-      const API_KEY = process.env.EXPO_PUBLIC_DEEPSEEK_API_KEY;
-      if (!API_KEY) {
-        throw new Error('Clé API DeepSeek manquante. Vérifiez votre fichier .env');
-      }
-
-      const url = 'https://api.deepseek.com/chat/completions';
-
-      // Construire l'historique des messages au format DeepSeek (compatible OpenAI)
-      const conversationHistory = messages.concat(userMessage).map((msg) => ({
-        role: msg.role === 'user' ? 'user' : 'assistant',
-        content: msg.content,
-      }));
-
-      const body = {
-        model: 'deepseek-chat', // ou 'deepseek-reasoner'
-        messages: conversationHistory,
-        stream: false,
-      };
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${API_KEY}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        const errorMessage = errorData?.error?.message || `Erreur HTTP ${res.status}`;
-        throw new Error(errorMessage);
-      }
-
-      const data = await res.json();
-      console.log('Réponse DeepSeek:', data);
-
-      const text = data?.choices?.[0]?.message?.content || 'Aucune réponse.';
-
-      const assistantMessage: Message = { role: 'assistant', content: text };
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (error) {
-      console.error('Erreur DeepSeek:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Impossible de contacter l’API.';
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: `❌ ${errorMessage}` },
-      ]);
-    } finally {
-      setLoading(false);
-      setTimeout(() => scrollViewRef.current?.scrollToEnd({ animated: true }), 100);
+    if (!result.canceled) {
+      setSelectedImage(result.assets[0].uri);
     }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <View style={styles.container}>
-        <Text style={styles.title}>💬 Conversation</Text>
+  const generateImage = async () => {
+    if (!prompt.trim()) {
+      Alert.alert('Erreur', 'Veuillez entrer un prompt.');
+      return;
+    }
 
+    if (!FAL_KEY) {
+      Alert.alert('Erreur', 'Clé API fal.ai manquante.');
+      return;
+    }
+
+    setLoading(true);
+    setCurrentImage(null);
+
+    try {
+      const finalPrompt = `${prompt} ${selectedStyle.value}`;
+      let result;
+
+      if (selectedImage) {
+        let imageUrlToUse = selectedImage;
+
+        if (selectedImage.startsWith("file://")) {
+          const response = await fetch(selectedImage);
+          const blob = await response.blob();
+          imageUrlToUse = await fal.storage.upload(blob);
+        }
+
+        result = await fal.subscribe(
+          "akhaliq/veo3.1-fast-image-to-video",
+          {
+            input: {
+              prompt: finalPrompt,
+              image_url: imageUrlToUse,
+              strength: 0.7,
+            },
+          }
+        );
+      } else {
+        result = await fal.subscribe("fal-ai/flux/schnell", {
+          input: {
+            prompt: finalPrompt,
+          },
+        });
+      }
+
+      const imageUrl = result?.data?.images?.[0]?.url;
+      if (!imageUrl) throw new Error("Aucune image générée");
+
+      setCurrentImage(imageUrl);
+      setSelectedImage(null);
+
+      setGeneratedImages(prev => [{
+        prompt: finalPrompt,
+        imageUrl,
+        timestamp: Date.now(),
+      }, ...prev]);
+
+      setPrompt('');
+
+    } catch (error: any) {
+      console.log("FULL ERROR:", JSON.stringify(error, null, 2));
+      Alert.alert("Erreur", error?.message || "Erreur génération");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+const saveImage = async () => {
+  if (!currentImage) return;
+
+  try {
+    const { status } = await MediaLibrary.requestPermissionsAsync();
+    if (status !== 'granted') return;
+
+    await MediaLibrary.saveToLibraryAsync(currentImage);
+    Alert.alert('Image sauvegardée ✅');
+
+  } catch {
+    Alert.alert('Erreur sauvegarde');
+  }
+};
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={styles.container}>
+        <Header title="🎨 AI Image Studio" />
+    <Text style={[styles.sectionTitle, { marginTop: 16 }]}>Modèle</Text>
+<ScrollView horizontal showsHorizontalScrollIndicator={false}>
+  {MODELS.map((model) => (
+    <TouchableOpacity
+      key={model.value}
+      style={[
+        styles.styleChip,
+        selectedModel.value === model.value && styles.styleChipActive,
+      ]}
+      onPress={() => setSelectedModel(model)}
+    >
+      <Text style={{ color: '#fff' }}>{model.label}</Text>
+    </TouchableOpacity>
+  ))}
+</ScrollView>
         <ScrollView
           ref={scrollViewRef}
-          style={styles.messagesContainer}
-          contentContainerStyle={styles.messagesContent}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
         >
-          {messages.map((msg, index) => (
-            <View
-              key={index}
-              style={[
-                styles.messageBubble,
-                msg.role === 'user' ? styles.userBubble : styles.assistantBubble,
-              ]}
-            >
-              <Text style={msg.role === 'user' ? styles.userText : styles.assistantText}>
-                {msg.content}
-              </Text>
+          {selectedImage && (
+            <View style={styles.previewBox}>
+              <Text style={styles.sectionTitle}>Image à modifier</Text>
+              <Image source={{ uri: selectedImage }} style={styles.previewImage} />
+              <TouchableOpacity onPress={() => setSelectedImage(null)}>
+                <Text style={{ color: '#ef4444', marginTop: 6 }}>✕ Retirer</Text>
+              </TouchableOpacity>
             </View>
+          )}
+
+          {currentImage && (
+            <View style={styles.imageBox}>
+              <Image source={{ uri: currentImage }} style={styles.mainImage} />
+
+              <View style={styles.actionsRow}>
+                <TouchableOpacity style={styles.saveBtn} onPress={saveImage}>
+                  <Text style={styles.btnText}>💾 Save</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity style={styles.newBtn} onPress={() => setCurrentImage(null)}>
+                  <Text style={styles.btnText}>🔄 New</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          <Text style={styles.sectionTitle}>Styles</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            {STYLES.map((style) => (
+              <TouchableOpacity
+                key={style.label}
+                style={[
+                  styles.styleChip,
+                  selectedStyle.label === style.label && styles.styleChipActive,
+                ]}
+                onPress={() => setSelectedStyle(style)}
+              >
+                <Text style={{ color: '#fff' }}>{style.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          {generatedImages.length > 0 && (
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Historique</Text>
+          )}
+
+          {generatedImages.map((item) => (
+            <TouchableOpacity key={item.timestamp} onPress={() => setCurrentImage(item.imageUrl)}>
+              <Image source={{ uri: item.imageUrl }} style={styles.historyImage} />
+              <Text style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>{item.prompt}</Text>
+            </TouchableOpacity>
           ))}
+
           {loading && (
-            <View style={[styles.messageBubble, styles.assistantBubble]}>
-              <ActivityIndicator size="small" color="#4f46e5" />
-            </View>
+            <ActivityIndicator size="large" color="#6366f1" style={{ marginTop: 20 }} />
           )}
         </ScrollView>
 
         <View style={styles.inputContainer}>
+          <TouchableOpacity onPress={pickImage}>
+            <Text style={{ fontSize: 24 }}>📷</Text>
+          </TouchableOpacity>
+
           <TextInput
             style={styles.input}
-            placeholder="Écrire un message..."
-            value={inputText}
-            onChangeText={setInputText}
-            multiline
-            maxLength={1000}
+            placeholder="Describe your image..."
+            placeholderTextColor="#94a3b8"
+            value={prompt}
+            onChangeText={setPrompt}
           />
+
           <TouchableOpacity
-            style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
-            onPress={sendPrompt}
-            disabled={loading || !inputText.trim()}
+            style={[styles.generateBtn, loading && { opacity: 0.5 }]}
+            onPress={generateImage}
+            disabled={loading}
           >
-            <Text style={styles.sendButtonText}>Envoyer</Text>
+            <Text style={styles.btnText}>Go</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -150,83 +263,21 @@ export default function creation() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  title: {
-    fontSize: 22,
-    fontWeight: '700',
-    textAlign: 'center',
-    paddingVertical: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-  },
-  messagesContainer: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  messagesContent: {
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  messageBubble: {
-    maxWidth: '80%',
-    padding: 12,
-    borderRadius: 18,
-    marginBottom: 12,
-  },
-  userBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#4f46e5',
-  },
-  assistantBubble: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  userText: {
-    color: '#fff',
-    fontSize: 16,
-  },
-  assistantText: {
-    color: '#0f172a',
-    fontSize: 16,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#e2e8f0',
-    alignItems: 'flex-end',
-  },
-  input: {
-    flex: 1,
-    backgroundColor: '#f1f5f9',
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    maxHeight: 120,
-    fontSize: 16,
-    marginRight: 12,
-  },
-  sendButton: {
-    backgroundColor: '#4f46e5',
-    borderRadius: 24,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    justifyContent: 'center',
-  },
-  sendButtonDisabled: {
-    backgroundColor: '#cbd5e1',
-  },
-  sendButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
+  container: { flex: 1, backgroundColor: '#0f172a' },
+  content: { padding: 16 },
+  sectionTitle: { color: '#fff', marginBottom: 8, fontWeight: '600' },
+  previewBox: { marginBottom: 16 },
+  previewImage: { width: 120, height: 120, borderRadius: 10 },
+  imageBox: { marginBottom: 20 },
+  mainImage: { width: '100%', height: 300, borderRadius: 12 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginTop: 10 },
+  saveBtn: { flex: 1, backgroundColor: '#10b981', padding: 10, borderRadius: 8, alignItems: 'center' },
+  newBtn: { flex: 1, backgroundColor: '#6366f1', padding: 10, borderRadius: 8, alignItems: 'center' },
+  btnText: { color: '#fff', textAlign: 'center' },
+  styleChip: { backgroundColor: '#1e293b', padding: 10, borderRadius: 20, marginRight: 10 },
+  styleChipActive: { backgroundColor: '#6366f1' },
+  historyImage: { width: '100%', height: 150, borderRadius: 10, marginTop: 10 },
+  inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#020617', alignItems: 'center' },
+  input: { flex: 1, backgroundColor: '#1e293b', color: '#fff', borderRadius: 20, paddingHorizontal: 10, marginHorizontal: 10, height: 44 },
+  generateBtn: { backgroundColor: '#6366f1', padding: 10, borderRadius: 20 },
 });
