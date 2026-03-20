@@ -101,7 +101,7 @@ const [selectedModel, setSelectedModel] = useState(MODELS[0]);
         }
 
         result = await fal.subscribe(
-          "akhaliq/veo3.1-fast-image-to-video",
+          "fal-ai/flux/dev/image-to-image",
           {
             input: {
               prompt: finalPrompt,
